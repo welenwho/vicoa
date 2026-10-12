@@ -130,7 +130,14 @@ def test_gemini_gets_long_initialize_timeout() -> None:
 
 
 def test_specs_cover_expected_agents() -> None:
-    assert set(GENERIC_ACP_AGENTS) == {"cursor", "gemini", "copilot", "kimi", "hermes"}
+    assert set(GENERIC_ACP_AGENTS) == {
+        "cursor",
+        "gemini",
+        "copilot",
+        "kimi",
+        "hermes",
+        "grok",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +161,15 @@ def test_kimi_passes_model_flag_before_acp_subcommand(
     _which_first_candidate(monkeypatch)
     cmd = _config("kimi", model="moonshot-ai/kimi-k2.5").get_acp_command()
     assert cmd == ["kimi", "--model", "moonshot-ai/kimi-k2.5", "acp"]
+
+
+def test_grok_passes_model_flag_before_agent_subcommand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _which_first_candidate(monkeypatch)
+    cmd = _config("grok", model="grok-4.5").get_acp_command()
+    assert cmd == ["grok", "--model", "grok-4.5", "agent", "stdio"]
+    assert _config("grok").get_acp_command() == ["grok", "agent", "stdio"]
 
 
 def test_auto_model_does_not_add_launch_flag(monkeypatch: pytest.MonkeyPatch) -> None:

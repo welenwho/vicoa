@@ -26,7 +26,7 @@ from protocol.acp_catalog import ACP_CATALOG
 
 
 AGENT_CATALOG: dict[str, Any] = {
-    "version": "2026-09-26-1",
+    "version": "2026-10-12-1",
     "min_cli_version": "1.20.0",
     "min_client_version": "0.42.0",
     "agents": [
@@ -406,6 +406,18 @@ AGENT_CATALOG: dict[str, Any] = {
             "label": "Hermes",
             "models": [
                 {"id": "default", "label": "Provider default", "is_default": True},
+            ],
+        },
+        {
+            "id": "grok",
+            "label": "Grok",
+            # `auto` skips --model so the CLI uses its configured default
+            # (currently grok-4.5). The named ids are what `grok models` and
+            # an ACP session/new report. A live probe still replaces this list.
+            "models": [
+                {"id": "auto", "label": "Default", "is_default": True},
+                {"id": "grok-4.5", "label": "Grok 4.5"},
+                {"id": "grok-4.6", "label": "Grok 4.6"},
             ],
         },
     ],

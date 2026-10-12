@@ -196,7 +196,7 @@ ACP_CATALOG: list[dict[str, Any]] = [
         "description": "xAI's Grok Build agentic coding CLI with plan mode and parallel subagents. Requires a SuperGrok or X Premium+ subscription.",
         "command": ["grok", "agent", "stdio"],
         "install_url": "https://docs.x.ai/build/overview",
-        "version": "0.2.11",
+        "version": "1.0.50",
     },
     {
         "id": "junie",

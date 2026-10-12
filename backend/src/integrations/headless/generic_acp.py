@@ -4,7 +4,8 @@
 One module drives every agent whose integration surface is a spec-compliant
 ACP server subcommand: Cursor (``cursor-agent acp``), Gemini CLI
 (``gemini --experimental-acp``), Copilot CLI (``copilot --acp --stdio``),
-Kimi CLI (``kimi acp``) and Hermes (``hermes acp``). Each agent is one
+Kimi CLI (``kimi acp``), Hermes (``hermes acp``) and Grok
+(``grok agent stdio``). Each agent is one
 :class:`GenericAgentSpec` table row — adding another ACP agent is a table
 entry plus catalog/UI plumbing, not a new wrapper.
 
@@ -125,6 +126,17 @@ GENERIC_ACP_AGENTS: Dict[str, GenericAgentSpec] = {
             "Install Hermes: curl -fsSL "
             "https://hermes-agent.nousresearch.com/install.sh | bash"
         ),
+    ),
+    "grok": GenericAgentSpec(
+        catalog_id="grok",
+        display_name="Grok",
+        binaries=("grok",),
+        acp_args=("agent", "stdio"),
+        # `--model` is a global flag and must precede the `agent` subcommand:
+        # `grok --model grok-4.5 agent stdio`.
+        model_arg="--model",
+        model_arg_first=True,
+        install_hint="Install the Grok CLI: https://docs.x.ai/build/overview",
     ),
 }
 

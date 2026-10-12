@@ -84,7 +84,7 @@ class TestGenericAgentCommandBuild:
 
 
 class TestGenericAgentNormalization:
-    @pytest.mark.parametrize("agent", ["cursor", "gemini", "copilot", "kimi", "hermes"])
+    @pytest.mark.parametrize("agent", ["cursor", "gemini", "copilot", "kimi", "hermes", "grok"])
     def test_new_agents_accepted(self, daemon: MachineDaemon, agent: str):
         assert daemon._normalize_agent(agent) == agent
 

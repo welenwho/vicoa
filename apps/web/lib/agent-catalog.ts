@@ -529,7 +529,7 @@ export function savePersistedSelection(payload: Partial<PersistedSelection>): vo
 // ---------------------------------------------------------------------------
 
 export const AGENT_CATALOG_FALLBACK: AgentCatalog = {
-  version: "2026-09-26-1",
+  version: "2026-10-12-1",
   min_cli_version: "1.20.0",
   min_client_version: "0.42.0",
   agents: [
@@ -769,6 +769,16 @@ export const AGENT_CATALOG_FALLBACK: AgentCatalog = {
       id: "hermes",
       label: "Hermes",
       models: [{ id: "default", label: "Provider default", is_default: true }],
+    },
+    {
+      id: "grok",
+      label: "Grok",
+      // `auto` skips --model; the named ids match `grok models`.
+      models: [
+        { id: "auto", label: "Default", is_default: true },
+        { id: "grok-4.5", label: "Grok 4.5" },
+        { id: "grok-4.6", label: "Grok 4.6" },
+      ],
     },
   ],
 };

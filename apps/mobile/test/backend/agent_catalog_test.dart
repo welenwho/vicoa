@@ -9,7 +9,7 @@ void main() {
       final ids = catalog.agents.map((a) => a.id).toList();
       expect(
         ids,
-        containsAll(<String>['claude', 'codex', 'opencode', 'cursor', 'gemini', 'copilot', 'kimi', 'hermes']),
+        containsAll(<String>['claude', 'codex', 'opencode', 'cursor', 'gemini', 'copilot', 'kimi', 'hermes', 'grok']),
       );
     });
 
