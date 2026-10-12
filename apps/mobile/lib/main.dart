@@ -11,7 +11,9 @@ import 'auth/supabase_auth/supabase_user_provider.dart';
 import 'auth/supabase_auth/auth_util.dart';
 import '/backend/push_notifications/push_notifications_handler.dart';
 
+import '/auth/builtin_auth/builtin_session.dart';
 import '/backend/supabase/supabase.dart';
+import '/custom_code/server/server_config.dart';
 import 'backend/firebase/firebase_config.dart';
 import '/backend/posthog/posthog_analytics.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -54,7 +56,19 @@ void main() async {
   }
   // End initial custom actions code
 
-  await SupaFlow.initialize();
+  await ServerConfig.instance.load();
+  await BuiltinSession.instance.load();
+
+  // Built-in self-hosted auth does not use Supabase. A Supabase deployment
+  // still initializes from the in-app project keys or from --dart-define.
+  if (!ServerConfig.instance.isBuiltin) {
+    final supabaseUrl = ServerConfig.instance.supabaseUrl;
+    final supabaseKey = ServerConfig.instance.supabaseAnonKey;
+    await SupaFlow.initialize(
+      url: supabaseUrl.isEmpty ? null : supabaseUrl,
+      anonKey: supabaseKey.isEmpty ? null : supabaseKey,
+    );
+  }
 
   await FlutterFlowTheme.initialize();
 
@@ -194,12 +208,20 @@ class _MyAppState extends State<MyApp> {
 
     _appStateNotifier = AppStateNotifier.instance;
     _router = createRouter(_appStateNotifier);
-    userStream = vicoaSupabaseUserStream()
-      ..listen((user) {
-        _appStateNotifier.update(user);
-        debugLogAuthenticatedUser();
-      });
-    jwtTokenStream.listen((_) {});
+    if (SupaFlow.isInitialized && !ServerConfig.instance.isBuiltin) {
+      userStream = vicoaSupabaseUserStream()
+        ..listen((user) {
+          _appStateNotifier.update(user);
+          debugLogAuthenticatedUser();
+        });
+      jwtTokenStream.listen((_) {});
+    } else {
+      userStream = BuiltinSession.instance.userStream
+        ..listen((user) {
+          _appStateNotifier.update(user);
+          debugLogAuthenticatedUser();
+        });
+    }
     Future.delayed(
       Duration(milliseconds: 1000),
       () => _appStateNotifier.stopShowingSplashImage(),

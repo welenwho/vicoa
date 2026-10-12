@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '/backend/supabase/supabase.dart';
 import '/custom_code/actions/vicoa_api_config.dart';
+import '/custom_code/actions/vicoa_api_request.dart' show currentAccessToken;
 import '/flutter_flow/flutter_flow_theme.dart';
 
 const Set<String> _rasterImageTypes = {
@@ -106,7 +106,7 @@ class _AttachmentImage extends StatelessWidget {
     // Stable per-attachment URL → disk cache key. The bearer token only
     // matters on first fetch; the immutable response stays cached after.
     final url = '${getVicoaApiBaseUrl()}/api/v1/attachments/$id';
-    final token = SupaFlow.client.auth.currentSession?.accessToken ?? '';
+    final token = currentAccessToken();
     return CachedNetworkImage(
       imageUrl: url,
       httpHeaders: {'Authorization': 'Bearer $token'},

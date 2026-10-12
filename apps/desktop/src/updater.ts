@@ -120,8 +120,13 @@ function errorMessage(err: unknown): string {
   return text.length > 0 ? text : 'Update failed';
 }
 
+function updatesEnabled(): boolean {
+  // The self-host package must not pull the official GitHub release over itself.
+  return app.isPackaged && app.getName() !== 'Vicoa Self-host';
+}
+
 async function runCheck(): Promise<UpdateStatus> {
-  if (!app.isPackaged) return latestStatus;
+  if (!updatesEnabled()) return latestStatus;
   lastCheckStartedAt = Date.now();
   try {
     await autoUpdater.checkForUpdates();
@@ -152,7 +157,7 @@ function checkWouldStompProgress(): boolean {
  * window, not at the next multi-hour tick.
  */
 function maybeCheck(reason: string): void {
-  if (!app.isPackaged) return;
+  if (!updatesEnabled()) return;
   if (checkWouldStompProgress()) return;
   if (Date.now() - lastCheckStartedAt < MIN_CHECK_GAP_MS) return;
   console.log(`[updater] checking for updates (${reason})`);
@@ -168,8 +173,8 @@ export function setupAutoUpdater(options: UpdaterOptions): void {
 
   registerIpc(options.onBeforeInstall);
 
-  if (!app.isPackaged) {
-    return; // dev checkout: bridge is inert (no app-update.yml to check)
+  if (!updatesEnabled()) {
+    return; // dev checkout, or the self-host package: bridge is inert
   }
 
   // Download as soon as a check finds a newer version; the renderer never has

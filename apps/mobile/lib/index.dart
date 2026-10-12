@@ -5,6 +5,10 @@ export '/pages/main_tabs/main_tabs_widget.dart' show MainTabsWidget;
 export '/pages/automations/automations_widget.dart' show AutomationsWidget;
 export '/onboarding/auth_options/auth_options_widget.dart'
     show AuthOptionsWidget;
+export '/onboarding/builtin_sign_in/builtin_sign_in_widget.dart'
+    show BuiltinSignInWidget;
+export '/profile/server_settings/server_settings_widget.dart'
+    show ServerSettingsWidget;
 export '/onboarding/sign_up/sign_up_widget.dart' show SignUpWidget;
 export '/profile/account/account_widget.dart' show AccountWidget;
 export '/profile/usage_credits/usage_credits_widget.dart'

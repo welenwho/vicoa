@@ -13,12 +13,18 @@
  * reports what the server actually resolved.
  */
 
+import { getDesktopConfig } from '@/lib/runtime-config';
+
 export type AuthProviderName = 'supabase' | 'builtin';
 
 /** Cookie the built-in provider's session token lives in. */
 export const BUILTIN_SESSION_COOKIE = 'vicoa_session';
 
 export function getAuthProviderName(): AuthProviderName {
+  // A packaged desktop build inlines the hosted provider. The server screen
+  // injects the deployment it just probed, and that wins.
+  const injected = getDesktopConfig()?.authProvider;
+  if (injected === 'builtin' || injected === 'supabase') return injected;
   return process.env.NEXT_PUBLIC_AUTH_PROVIDER === 'builtin' ? 'builtin' : 'supabase';
 }
 

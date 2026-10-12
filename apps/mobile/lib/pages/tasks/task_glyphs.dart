@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '/backend/supabase/supabase.dart';
 import '/custom_code/actions/vicoa_api_config.dart';
+import '/custom_code/actions/vicoa_api_request.dart' show currentAccessToken;
 import '/custom_code/utils/task_utils.dart' as tutils;
 import '/flutter_flow/flutter_flow_theme.dart';
 
@@ -241,7 +241,7 @@ class TaskProjectIcon extends StatelessWidget {
     final fallback = _fallback(context);
     final imageUrl = _imageUrl();
     if (imageUrl == null) return fallback;
-    final token = SupaFlow.client.auth.currentSession?.accessToken ?? '';
+    final token = currentAccessToken();
     return ClipRRect(
       borderRadius: BorderRadius.circular(_radius),
       child: CachedNetworkImage(

@@ -9,6 +9,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '/auth/builtin_auth/builtin_session.dart';
+import '/custom_code/server/server_config.dart';
 import 'vicoa_api_config.dart';
 
 // Custom exceptions for categorizing errors
@@ -264,6 +266,10 @@ Future<T> vicoaApiRequestComputed<T>(
 }
 
 Future<String?> getUserToken() async {
+  if (ServerConfig.instance.isBuiltin) {
+    return BuiltinSession.instance.validToken();
+  }
+  if (!SupaFlow.isInitialized) return null;
   // Get Supabase JWT token
   // Supabase handles automatic token refresh via autoRefreshToken: true
   var session = SupaFlow.client.auth.currentSession;
@@ -274,4 +280,17 @@ Future<String?> getUserToken() async {
   }
 
   return session.accessToken;
+}
+
+/// Synchronous bearer token for image requests that cannot await [getUserToken].
+String currentAccessToken() {
+  if (ServerConfig.instance.isBuiltin) {
+    return BuiltinSession.instance.validToken() ?? '';
+  }
+  if (!SupaFlow.isInitialized) return '';
+  try {
+    return SupaFlow.client.auth.currentSession?.accessToken ?? '';
+  } catch (_) {
+    return '';
+  }
 }

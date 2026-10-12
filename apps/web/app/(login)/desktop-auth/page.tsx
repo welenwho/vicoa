@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { isBuiltinAuth } from '@/lib/auth/auth-provider';
+import { getBuiltinClaims, getBuiltinToken } from '@/lib/auth/builtin-client';
 import { createClient } from '@/lib/auth/supabase-client';
 
 /**
@@ -45,11 +47,12 @@ function buildCallbackUrl(
   if (tokenHash) {
     params.set('token_hash', tokenHash);
   } else if (tokens) {
-    // Legacy fallback (endpoint unavailable): carry the Supabase session
-    // back so the app's renderer still holds a validated session. Bound by
-    // the `state` nonce, same trust boundary as the api_key in this URL.
-    params.set('access_token', tokens.accessToken);
-    params.set('refresh_token', tokens.refreshToken);
+    // Legacy Supabase fallback, and the built-in provider's session token.
+    // A builtin handoff has an access token and no refresh token: the desktop
+    // renderer stores that bearer itself. Bound by the `state` nonce, same
+    // trust boundary as the api_key in this URL.
+    if (tokens.accessToken) params.set('access_token', tokens.accessToken);
+    if (tokens.refreshToken) params.set('refresh_token', tokens.refreshToken);
   }
   return `vicoa://auth/callback?${params.toString()}`;
 }
@@ -104,7 +107,7 @@ function DesktopAuthContent() {
       }
       const { apiKey } = await response.json();
       // One-time token so the app gets its own session (see file docs).
-      const tokenHash = await mintSessionTokenHash();
+      const tokenHash = isBuiltinAuth() ? null : await mintSessionTokenHash();
       const url = buildCallbackUrl(apiKey, state ?? '', tokenHash, tokens);
       setLaunchUrl(url);
       setPhase('done');
@@ -119,6 +122,15 @@ function DesktopAuthContent() {
   }, [state]);
 
   const continueWithSession = useCallback(async () => {
+    if (isBuiltinAuth()) {
+      const token = getBuiltinToken();
+      if (!token) {
+        redirectToSignIn();
+        return;
+      }
+      void mintAndLaunch({ accessToken: token, refreshToken: '' });
+      return;
+    }
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -152,6 +164,22 @@ function DesktopAuthContent() {
         // don't run the handoff at all, just point at the app.
         if (!state) {
           setPhase('no-state');
+          return;
+        }
+        if (isBuiltinAuth()) {
+          const token = getBuiltinToken();
+          if (!token) {
+            setPhase('signin');
+            redirectToSignIn();
+            return;
+          }
+          const resume = new URLSearchParams(window.location.search).get('resume') === '1';
+          if (resume) {
+            void mintAndLaunch({ accessToken: token, refreshToken: '' });
+          } else {
+            setEmail(getBuiltinClaims()?.email ?? null);
+            setPhase('ready');
+          }
           return;
         }
         const supabase = createClient();

@@ -8,6 +8,7 @@ import {
   parseDesktopAuthCallback,
   readDesktopAuthNonce,
 } from '@/lib/desktop-auth';
+import { isBuiltinAuth } from '@/lib/auth/auth-provider';
 import { createClient } from '@/lib/auth/supabase-client';
 import { trackSignInReturned, type SignInOutcome } from '@/lib/desktop-telemetry';
 
@@ -100,6 +101,20 @@ export function useDesktopAuthCallback(
           // confirm-dialog click) carries an already-consumed one-time
           // token, and re-verifying it would fail a handoff that only needs
           // the daemon key retried.
+          if (isBuiltinAuth() && accessToken && !refreshToken) {
+            // The browser handoff carried this deployment's own session token.
+            // Store it on the desktop renderer's origin; the web cookie does
+            // not travel with the vicoa:// callback.
+            const maxAge = 60 * 60 * 24 * 30;
+            document.cookie =
+              `vicoa_session=${encodeURIComponent(accessToken)}` +
+              `; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+            try {
+              localStorage.setItem('vicoa_session', accessToken);
+            } catch {
+              // cookie remains the session
+            }
+          } else if (!isBuiltinAuth()) {
           const supabase = createClient();
           const {
             data: { session: existingSession },
@@ -121,6 +136,7 @@ export function useDesktopAuthCallback(
               });
               if (error) throw new Error(error.message);
             }
+          }
           }
           const result = await bridge.setApiKey(apiKey);
           if (!result.ok) {

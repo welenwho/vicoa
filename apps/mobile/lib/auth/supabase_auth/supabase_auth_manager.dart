@@ -12,6 +12,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:superwallkit_flutter/superwallkit_flutter.dart';
 import '/auth/auth_manager.dart';
+import '/auth/builtin_auth/builtin_session.dart';
 import '/backend/posthog/posthog_analytics.dart';
 import '/backend/supabase/supabase.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -49,7 +50,10 @@ class SupabaseAuthManager extends AuthManager
     } catch (e) {
       debugPrint('Superwall.reset failed: $e');
     }
-    await SupaFlow.client.auth.signOut();
+    await BuiltinSession.instance.signOut();
+    if (SupaFlow.isInitialized) {
+      await SupaFlow.client.auth.signOut();
+    }
   }
 
   @override

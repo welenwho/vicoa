@@ -488,8 +488,8 @@ function CloudAccountArea() {
       // Clear the renderer session first so the reloaded window is signed out
       // too. scope 'local' — signing out of the app must not revoke the user's
       // website/other-device sessions (the default scope is 'global').
-      const supabase = createClient();
-      await supabase.auth.signOut({ scope: 'local' });
+      const { signOutBrowser } = await import('@/lib/auth/sign-out');
+      await signOutBrowser();
     } catch {
       // Best-effort; the shell-side sign-out is what flips the mode. A dead
       // session that survives here is cleaned up by DesktopAuthHandoff when its

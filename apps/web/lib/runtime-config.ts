@@ -32,6 +32,12 @@ export interface DesktopRuntimeConfig {
    */
   cloudApiBase?: string;
   cloudWsUrl?: string;
+  /** Web origin for `/desktop-auth`. Absent → build-time `NEXT_PUBLIC_VICOA_WEB_URL`. */
+  cloudWebUrl?: string;
+  /** Provider from `GET /api/v1/auth/config`, injected by the desktop shell. */
+  authProvider?: 'builtin' | 'supabase';
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 /**

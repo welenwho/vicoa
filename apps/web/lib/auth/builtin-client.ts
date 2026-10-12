@@ -26,7 +26,15 @@ export type BuiltinSession = {
 
 export function getBuiltinToken(): string | null {
   if (typeof document === 'undefined') return null;
-  const token = readSessionCookie(document.cookie);
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(BUILTIN_SESSION_COOKIE);
+  } catch {
+    stored = null;
+  }
+  // Cookie first. localStorage covers a reload that races the cookie write
+  // during the desktop handoff.
+  const token = readSessionCookie(document.cookie) || stored;
   // An expired token is worse than none: it would be sent, rejected, and read
   // as "the server is broken" rather than "sign in again".
   return decodeBuiltinToken(token) ? token : null;
@@ -51,6 +59,11 @@ export function setBuiltinSession(session: BuiltinSession): void {
 export function clearBuiltinSession(): void {
   if (typeof document === 'undefined') return;
   document.cookie = `${BUILTIN_SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+  try {
+    localStorage.removeItem(BUILTIN_SESSION_COOKIE);
+  } catch {
+    // private mode
+  }
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {

@@ -13,7 +13,7 @@
  */
 
 import { getBackendAPI, type BillingInterval, type BillingSubscription } from '@/lib/backend-api';
-import { getDesktopAuthBridge } from '@/lib/desktop-auth';
+import { desktopWebOrigin, getDesktopAuthBridge } from '@/lib/desktop-auth';
 
 /** Monthly list price, USD. Mirrors app/(marketing)/pricing/pricing-cards.tsx. */
 export const PRO_MONTHLY_PRICE = 12;
@@ -79,7 +79,7 @@ export function readPlanWithin(ms: number): Promise<BillingSubscription | null> 
  * dead-end in the user's browser. Same source `desktopAuthUrl()` uses.
  */
 export function webOrigin(): string {
-  return process.env.NEXT_PUBLIC_VICOA_WEB_URL ?? 'https://vicoa.ai';
+  return desktopWebOrigin();
 }
 
 /**

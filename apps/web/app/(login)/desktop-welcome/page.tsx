@@ -121,6 +121,15 @@ export default function DesktopWelcomePage() {
                 >
                   Sign up
                 </button>
+                {process.env.NEXT_PUBLIC_VICOA_REQUIRE_SERVER === '1' && (
+                  <button
+                    type="button"
+                    onClick={() => router.push('/desktop-server')}
+                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    Change server
+                  </button>
+                )}
               </>
             )}
           </div>

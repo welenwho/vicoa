@@ -14,6 +14,7 @@ import {
   parseCloudStatus,
   resolveDaemonCommand,
 } from './daemon-manager';
+import { deriveWsUrl, normalizeHttpUrl, normalizeWsUrl } from './server-url';
 import {
   mergeDaemonPath,
   mergePathEntries,
@@ -24,6 +25,15 @@ import {
   resolveDaemonEnv,
   shellVarsForDaemon,
 } from './resolve-path';
+
+// --- server address normalization -------------------------------------------
+assert.equal(normalizeHttpUrl(' vicoa.example.com:10086/ '), 'https://vicoa.example.com:10086');
+assert.equal(normalizeHttpUrl('http://192.168.1.10:8000/vicoa/'), 'http://192.168.1.10:8000/vicoa');
+assert.equal(normalizeHttpUrl(''), null);
+assert.equal(normalizeHttpUrl('not a url'), null);
+assert.equal(deriveWsUrl('https://vicoa-api.example.com:10086'), 'wss://vicoa-api.example.com:10086/ws');
+assert.equal(deriveWsUrl('http://127.0.0.1:8000'), 'ws://127.0.0.1:8000/ws');
+assert.equal(normalizeWsUrl('https://api.example.com:10086'), 'wss://api.example.com:10086/ws');
 
 // --- resolveDaemonCommand ---------------------------------------------------
 assert.deepEqual(resolveDaemonCommand({}), ['vicoa'], 'default command is vicoa on PATH');

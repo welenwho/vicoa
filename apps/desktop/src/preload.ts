@@ -23,6 +23,10 @@ interface DesktopConfig {
   /** Self-hosted cloud endpoints; absent unless the user configured them. */
   cloudApiBase?: string;
   cloudWsUrl?: string;
+  cloudWebUrl?: string;
+  authProvider?: 'builtin' | 'supabase';
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 interface AuthResult {
@@ -190,6 +194,12 @@ contextBridge.exposeInMainWorld('vicoaDesktopAuth', {
    * OS opener has been invoked.
    */
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('vicoa:open-external', url),
+  /** Ask the shell to call `GET /api/v1/auth/config` (no browser CORS). */
+  probeServer: (input: { apiUrl: string }): Promise<unknown> =>
+    ipcRenderer.invoke('vicoa:probe-server', input),
+  /** Persist the server screen and relaunch so the daemon picks up the new URLs. */
+  saveServerConfig: (input: unknown): Promise<AuthResult> =>
+    ipcRenderer.invoke('vicoa:save-server-config', input),
 });
 
 // Auto-update bridge (see src/updater.ts + lib/desktop-updates.ts). Present on

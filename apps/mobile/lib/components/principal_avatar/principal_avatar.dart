@@ -1,8 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '/backend/supabase/supabase.dart';
 import '/custom_code/actions/vicoa_api_config.dart';
+import '/custom_code/actions/vicoa_api_request.dart' show currentAccessToken;
 import '/flutter_flow/flutter_flow_theme.dart';
 
 /// PrincipalAvatar — the Flutter twin of
@@ -155,7 +155,7 @@ class PrincipalAvatar extends StatelessWidget {
       // cache-buster and the disk-cache key.
       final version = updatedAt == null ? '' : '?v=${Uri.encodeComponent(updatedAt!)}';
       final url = '${getVicoaApiBaseUrl()}/api/v1/users/$id/avatar$version';
-      final token = SupaFlow.client.auth.currentSession?.accessToken ?? '';
+      final token = currentAccessToken();
       return CachedNetworkImage(
         imageUrl: url,
         httpHeaders: {'Authorization': 'Bearer $token'},

@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:780704364741:android:90a470179ff68ca056d8ac",
         "android_client_info": {
-          "package_name": "app.vicoa"
+          "package_name": "app.vicoa.selfhost"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "780704364741-0efsugo1nttv7lo30nh3h8uson1lonv7.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "app.vicoa",
+            "package_name": "app.vicoa.selfhost",
             "certificate_hash": "15eac4cafe472469f37c51f18d09c87eab9f345a"
           }
         },
@@ -25,7 +25,7 @@
           "client_id": "780704364741-amuqhm16obnqagpfnk80aq19199b9skq.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "app.vicoa",
+            "package_name": "app.vicoa.selfhost",
             "certificate_hash": "711955094a83ab32c61f3bff50bd42a25a46a7b7"
           }
         },
@@ -33,7 +33,7 @@
           "client_id": "780704364741-ip7oqflj7rg1mdoe9l1b2tkgfchpt34n.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "app.vicoa",
+            "package_name": "app.vicoa.selfhost",
             "certificate_hash": "8b934f882e17b35d1fcd24aa994a59ae545feba2"
           }
         },

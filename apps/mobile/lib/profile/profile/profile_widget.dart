@@ -6,6 +6,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/l10n/app_localizations.dart';
 import '/profile/refer_friends/refer_friends_widget.dart';
 import '/constants/open_source.dart';
+import '/custom_code/server/server_strings.dart';
 import '/profile/pro_benefits/pro_benefits_widget.dart';
 import '/profile/report_issue_dialog/report_issue_dialog_widget.dart';
 import 'dart:math';
@@ -238,6 +239,25 @@ class _ProfileWidgetState extends State<ProfileWidget>
         ],
       ),
       'containerOnPageLoadAnimation6': AnimationInfo(
+        trigger: AnimationTrigger.onPageLoad,
+        effectsBuilder: () => [
+          FadeEffect(
+            curve: Curves.easeInOut,
+            delay: 0.0.ms,
+            duration: 600.0.ms,
+            begin: 0.0,
+            end: 1.0,
+          ),
+          MoveEffect(
+            curve: Curves.easeInOut,
+            delay: 0.0.ms,
+            duration: 600.0.ms,
+            begin: Offset(0.0, 100.0),
+            end: Offset(0.0, 0.0),
+          ),
+        ],
+      ),
+      'containerOnPageLoadAnimationServer': AnimationInfo(
         trigger: AnimationTrigger.onPageLoad,
         effectsBuilder: () => [
           FadeEffect(
@@ -1386,11 +1406,22 @@ class _ProfileWidgetState extends State<ProfileWidget>
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         _settingsRow(
+                          icon: Icons.dns_outlined,
+                          iconSize: 22.0,
+                          label: ServerStrings.of(context).profileServer,
+                          animationKey: 'containerOnPageLoadAnimationServer',
+                          isFirst: true,
+                          isLast: false,
+                          onTap: () {
+                            context.pushNamed(ServerSettingsWidget.routeName);
+                          },
+                        ),
+                        _settingsRow(
                           icon: Icons.person_rounded,
                           iconSize: 23.0,
                           label: AppLocalizations.of(context).profileAccount,
                           animationKey: 'containerOnPageLoadAnimation6',
-                          isFirst: true,
+                          isFirst: false,
                           isLast: false,
                           onTap: () {
                             logFirebaseEvent(

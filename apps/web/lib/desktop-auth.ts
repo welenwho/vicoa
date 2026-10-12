@@ -21,7 +21,7 @@
  * key can only be minted by the cloud backend.
  */
 
-import { getCloudApiBase } from '@/lib/runtime-config';
+import { getCloudApiBase, getDesktopConfig } from '@/lib/runtime-config';
 
 /** localStorage key holding the browser-handoff nonce. Persisted (not just a
     ref) so it survives a `/desktop-signin` remount — otherwise a remount would
@@ -168,10 +168,16 @@ export const DESKTOP_ACCOUNT_EMAIL_KEY = 'vicoa-desktop-account-email';
 
 /** Build the browser sign-in handoff URL for `/desktop-auth`. `mode: 'signup'`
     sends the user to create an account instead of signing in. */
+/** Web origin for the browser sign-in page. The desktop shell's saved address wins. */
+export function desktopWebOrigin(): string {
+  const injected = getDesktopConfig()?.cloudWebUrl?.replace(/\/+$/, '');
+  if (injected) return injected;
+  return (process.env.NEXT_PUBLIC_VICOA_WEB_URL ?? 'https://vicoa.ai').replace(/\/+$/, '');
+}
+
 export function desktopAuthUrl(nonce: string, mode?: string | null): string {
-  const base = process.env.NEXT_PUBLIC_VICOA_WEB_URL ?? 'https://vicoa.ai';
   const modeParam = mode === 'signup' ? '&mode=signup' : '';
-  return `${base}/desktop-auth?state=${nonce}${modeParam}`;
+  return `${desktopWebOrigin()}/desktop-auth?state=${nonce}${modeParam}`;
 }
 
 export interface DesktopAuthResult {
@@ -197,6 +203,29 @@ export interface DesktopAuthBridge {
    * step, or any external link. Only http(s)/`vicoa:` URLs are honored.
    */
   openExternal(url: string): Promise<void>;
+  /** Probe `GET /api/v1/auth/config` from the shell. Absent on plain web. */
+  probeServer?(input: { apiUrl: string }): Promise<ServerProbeResult>;
+  /** Save the server screen and relaunch. Absent on plain web. */
+  saveServerConfig?(input: ServerConfigSave): Promise<DesktopAuthResult>;
+}
+
+export interface ServerProbeResult {
+  ok: boolean;
+  error?: string;
+  apiUrl?: string;
+  wsUrl?: string | null;
+  provider?: 'builtin' | 'supabase';
+  allowSignup?: boolean;
+  requireEmailVerification?: boolean;
+}
+
+export interface ServerConfigSave {
+  webUrl: string;
+  apiUrl: string;
+  wsUrl: string;
+  authProvider: 'builtin' | 'supabase';
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 declare global {

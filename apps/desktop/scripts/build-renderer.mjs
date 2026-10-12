@@ -82,6 +82,17 @@ for (const [key, fallback] of Object.entries(CLOUD_DEFAULTS)) {
   bakedPublicEnv[key] = process.env[key] ?? fallback;
 }
 bakedPublicEnv.NEXT_PUBLIC_VICOA_DESKTOP = '1';
+// Self-host package: the sign-in URL is not baked. The first screen asks for
+// the web, API, and WebSocket addresses and the shell injects them at runtime.
+if (process.env.VICOA_SELFHOST === '1') {
+  bakedPublicEnv.NEXT_PUBLIC_VICOA_REQUIRE_SERVER = '1';
+  // Sign-in does not use the hosted Supabase project. A real Supabase self-host
+  // enters its own URL and anon key on the server screen; these only satisfy
+  // the build when no .env is present.
+  bakedPublicEnv.NEXT_PUBLIC_SUPABASE_URL ||= 'https://selfhost.invalid';
+  bakedPublicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||= 'selfhost-placeholder';
+  bakedPublicEnv.NEXT_PUBLIC_AUTH_PROVIDER ||= 'builtin';
+}
 
 for (const required of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY']) {
   if (!bakedPublicEnv[required]) {
@@ -134,12 +145,30 @@ execFileSync(isWindows ? 'pnpm.cmd' : 'pnpm', ['build'], {
 });
 
 // --- 2. stage per Next's documented standalone layout -------------------------
-const standaloneDir = path.join(webRoot, '.next', 'standalone');
-if (!fs.existsSync(path.join(standaloneDir, 'server.js'))) {
+const standaloneDir = findStandaloneApp(path.join(webRoot, '.next', 'standalone'));
+if (standaloneDir === null) {
   console.error(
-    `build-renderer: ${standaloneDir}/server.js not found — is output:'standalone' set in next.config.ts?`,
+    `build-renderer: standalone server.js not found under ${webRoot}/.next/standalone — is output:'standalone' set in next.config.ts?`,
   );
   process.exit(1);
+}
+console.log(`[build-renderer] standalone app at ${standaloneDir}`);
+
+/** Next nests the app under the inferred tracing root when a parent lockfile exists. */
+function findStandaloneApp(root) {
+  if (fs.existsSync(path.join(root, 'server.js'))) return root;
+  const matches = [];
+  const walk = (dir, depth) => {
+    if (depth > 8 || !fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      const child = path.join(dir, entry.name);
+      if (fs.existsSync(path.join(child, 'server.js'))) matches.push(child);
+      else walk(child, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 console.log(`[build-renderer] staging into ${stagingDir} …`);

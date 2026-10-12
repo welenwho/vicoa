@@ -15,7 +15,9 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { getWriteKey, withoutWriteKey, withWriteKey } from './credentials';
+import { deriveWsUrl } from './server-url';
 import { readShellState, updateShellState } from './shell-state';
+import type { AuthProviderName } from './server-url';
 
 /** Runtime config injected into the renderer as `window.__VICOA_DESKTOP__`. */
 export interface DesktopConfig {
@@ -27,6 +29,13 @@ export interface DesktopConfig {
   cloudApiBase?: string;
   /** Self-hosted cloud WebSocket URL; absent → build-time default. */
   cloudWsUrl?: string;
+  /** Web origin that serves `/desktop-auth`. Absent → build-time default. */
+  cloudWebUrl?: string;
+  /** Identity provider reported by `GET /api/v1/auth/config`. */
+  authProvider?: AuthProviderName;
+  /** Present when a Supabase self-host was entered on the server screen. */
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 /** Runtime override of the cloud endpoints, for people running their own backend. */
@@ -34,6 +43,19 @@ export interface SelfHostEndpoints {
   apiUrl?: string;
   wsUrl?: string;
   authUrl?: string;
+  authProvider?: AuthProviderName;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+}
+
+/** What the server screen persists into `~/.vicoa/desktop.json`. */
+export interface SavedServerConfig {
+  apiUrl: string;
+  wsUrl: string;
+  authUrl: string;
+  authProvider: AuthProviderName;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 /** Per-launch secret shared with the daemon; renderer presents it as Bearer/WS subprotocol token. */
@@ -240,22 +262,47 @@ function readDesktopConfigFile(): SelfHostEndpoints {
       const value = record[key];
       return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
     };
-    return { apiUrl: pick('apiUrl'), wsUrl: pick('wsUrl'), authUrl: pick('authUrl') };
+    const provider = pick('authProvider');
+    return {
+      apiUrl: pick('apiUrl'),
+      wsUrl: pick('wsUrl'),
+      authUrl: pick('authUrl'),
+      authProvider: provider === 'builtin' || provider === 'supabase' ? provider : undefined,
+      supabaseUrl: pick('supabaseUrl'),
+      supabaseAnonKey: pick('supabaseAnonKey'),
+    };
   } catch {
     return {};
   }
 }
 
-/** `https://host` → `wss://host/ws` (and `http://` → `ws://`). */
-function deriveWsUrl(apiUrl: string): string | undefined {
+/** Write the server screen's result, keeping any unknown fields already in the file. */
+export function saveSelfHostEndpoints(config: SavedServerConfig): void {
+  const dir = vicoaConfigDir();
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = desktopConfigFilePath();
+  let existing: Record<string, unknown> = {};
   try {
-    const url = new URL(apiUrl);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.pathname = url.pathname.replace(/\/+$/, '') + '/ws';
-    return url.toString();
+    const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+      existing = raw as Record<string, unknown>;
+    }
   } catch {
-    return undefined;
+    existing = {};
   }
+  const next: Record<string, unknown> = {
+    ...existing,
+    apiUrl: config.apiUrl,
+    wsUrl: config.wsUrl,
+    authUrl: config.authUrl,
+    authProvider: config.authProvider,
+  };
+  if (config.supabaseUrl) next.supabaseUrl = config.supabaseUrl;
+  else delete next.supabaseUrl;
+  if (config.supabaseAnonKey) next.supabaseAnonKey = config.supabaseAnonKey;
+  else delete next.supabaseAnonKey;
+  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
 }
 
 export function readSelfHostEndpoints(): SelfHostEndpoints {
@@ -267,13 +314,16 @@ export function readSelfHostEndpoints(): SelfHostEndpoints {
 
   const apiUrl = fromEnv('VICOA_API_URL') ?? file.apiUrl;
   const wsUrl =
-    fromEnv('VICOA_WS_URL') ?? file.wsUrl ?? (apiUrl !== undefined ? deriveWsUrl(apiUrl) : undefined);
+    fromEnv('VICOA_WS_URL') ?? file.wsUrl ?? (apiUrl !== undefined ? deriveWsUrl(apiUrl) ?? undefined : undefined);
   const authUrl = fromEnv('VICOA_AUTH_URL') ?? file.authUrl;
 
   const endpoints: SelfHostEndpoints = {};
   if (apiUrl !== undefined) endpoints.apiUrl = apiUrl;
   if (wsUrl !== undefined) endpoints.wsUrl = wsUrl;
   if (authUrl !== undefined) endpoints.authUrl = authUrl;
+  if (file.authProvider !== undefined) endpoints.authProvider = file.authProvider;
+  if (file.supabaseUrl !== undefined) endpoints.supabaseUrl = file.supabaseUrl;
+  if (file.supabaseAnonKey !== undefined) endpoints.supabaseAnonKey = file.supabaseAnonKey;
   return endpoints;
 }
 

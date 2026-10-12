@@ -41,9 +41,12 @@ import {
   rendererServerPath,
   rendererUrl,
   resolveDaemonBaseUrl,
+  saveSelfHostEndpoints,
   saveWriteKey,
   type DesktopConfig,
+  type SavedServerConfig,
 } from './config';
+import { deriveWsUrl, isAuthProviderName, normalizeHttpUrl, normalizeWsUrl } from './server-url';
 import { DaemonManager, daemonCommandAvailable, type DaemonState } from './daemon-manager';
 import { resolveDaemonEnv } from './resolve-path';
 import { startRendererServer, type RendererServer } from './renderer-server';
@@ -199,7 +202,7 @@ const daemonBaseUrl = resolveDaemonBaseUrl(selfHostEndpoints);
  *    instead, since those values were inlined at build time).
  */
 function applySelfHostEnv(): void {
-  const { apiUrl, wsUrl, authUrl } = selfHostEndpoints;
+  const { apiUrl, wsUrl, authUrl, authProvider } = selfHostEndpoints;
   if (apiUrl !== undefined) {
     process.env.VICOA_API_URL = apiUrl;
     process.env.NEXT_PUBLIC_BACKEND_API_URL = apiUrl;
@@ -209,6 +212,50 @@ function applySelfHostEnv(): void {
   }
   if (authUrl !== undefined) {
     process.env.VICOA_AUTH_URL = authUrl;
+    process.env.NEXT_PUBLIC_VICOA_WEB_URL = authUrl;
+  }
+  if (authProvider !== undefined) {
+    process.env.NEXT_PUBLIC_AUTH_PROVIDER = authProvider;
+  }
+}
+
+/**
+ * The self-host package shares `~/.vicoa/credentials.json` with any other
+ * Vicoa install on this machine. Cloud mode in THIS app starts only after a
+ * sign-in completed here, so opening the package cannot delete that shared key
+ * just because this app's renderer has no session cookie yet.
+ */
+function isSelfHostApp(): boolean {
+  return app.getName() === 'Vicoa Self-host';
+}
+
+function selfHostSessionMarkerPath(): string {
+  return path.join(app.getPath('userData'), 'selfhost-session.json');
+}
+
+function markSelfHostSession(): void {
+  if (!isSelfHostApp()) return;
+  const file = selfHostSessionMarkerPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify({ signedInAt: new Date().toISOString() })}\n`);
+}
+
+function clearSelfHostSession(): void {
+  if (!isSelfHostApp()) return;
+  try {
+    fs.rmSync(selfHostSessionMarkerPath(), { force: true });
+  } catch {
+    // already gone
+  }
+}
+
+function hasAppSession(): boolean {
+  if (!hasWriteKey(daemonBaseUrl)) return false;
+  if (!isSelfHostApp()) return true;
+  try {
+    return fs.existsSync(selfHostSessionMarkerPath());
+  } catch {
+    return false;
   }
 }
 
@@ -220,7 +267,7 @@ function desktopConfig(): DesktopConfig {
     // local-only — immediately reads as `local`, so the reload lands on the
     // login screen instead of a keyless `cloud` state the gate would try to
     // sign out of on a loop.
-    mode: hasWriteKey(daemonBaseUrl) ? 'cloud' : 'local',
+    mode: hasAppSession() ? 'cloud' : 'local',
     wsUrl: `ws://127.0.0.1:${localPort}/ws`,
     apiBase: `http://127.0.0.1:${localPort}`,
     token: localNonce,
@@ -228,6 +275,16 @@ function desktopConfig(): DesktopConfig {
     // renderer falls back to its build-time defaults when they are absent.
     ...(selfHostEndpoints.apiUrl !== undefined ? { cloudApiBase: selfHostEndpoints.apiUrl } : {}),
     ...(selfHostEndpoints.wsUrl !== undefined ? { cloudWsUrl: selfHostEndpoints.wsUrl } : {}),
+    ...(selfHostEndpoints.authUrl !== undefined ? { cloudWebUrl: selfHostEndpoints.authUrl } : {}),
+    ...(selfHostEndpoints.authProvider !== undefined
+      ? { authProvider: selfHostEndpoints.authProvider }
+      : {}),
+    ...(selfHostEndpoints.supabaseUrl !== undefined
+      ? { supabaseUrl: selfHostEndpoints.supabaseUrl }
+      : {}),
+    ...(selfHostEndpoints.supabaseAnonKey !== undefined
+      ? { supabaseAnonKey: selfHostEndpoints.supabaseAnonKey }
+      : {}),
   };
 }
 
@@ -268,10 +325,29 @@ function ensureMainWindow(): void {
 }
 
 function reloadRenderer(): void {
-  if (mainWindow !== null && !mainWindow.isDestroyed()) {
-    // Reload re-runs the preload, which pulls fresh config (mode may have flipped).
-    mainWindow.webContents.reload();
+  if (mainWindow === null || mainWindow.isDestroyed()) return;
+  // A successful sign-in used to reload the waiting page and stay there. Once
+  // the key is saved, leave the auth surface for the dashboard.
+  const current = mainWindow.webContents.getURL();
+  const onAuth = /\/(desktop-signin|desktop-welcome|desktop-auth|desktop-server|sign-in)(?:[/?#]|$)/.test(
+    current,
+  );
+  if (onAuth && hasAppSession()) {
+    try {
+      void mainWindow.loadURL(new URL('/dashboard', current).toString());
+      return;
+    } catch {
+      // fall through to a plain reload
+    }
   }
+  mainWindow.webContents.reload();
+}
+
+function openServerSettings(): void {
+  if (effectiveRendererUrl === '') return;
+  focusOrCreateWindow();
+  if (mainWindow === null || mainWindow.isDestroyed()) return;
+  void mainWindow.loadURL(new URL('/desktop-server', effectiveRendererUrl).toString());
 }
 
 /**
@@ -882,6 +958,104 @@ function registerIpcHandlers(): void {
     event.returnValue = windowChrome();
   });
 
+  ipcMain.handle('vicoa:probe-server', async (_event, raw: unknown) => {
+    const apiUrl =
+      typeof raw === 'object' && raw !== null && typeof (raw as { apiUrl?: unknown }).apiUrl === 'string'
+        ? normalizeHttpUrl((raw as { apiUrl: string }).apiUrl)
+        : null;
+    if (apiUrl === null) return { ok: false, error: 'Enter a valid API address' };
+    const wsPreview = deriveWsUrl(apiUrl);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/auth/config`, { signal: controller.signal });
+      if (!response.ok) {
+        return { ok: false, error: `Server returned HTTP ${response.status}` };
+      }
+      const body: unknown = await response.json();
+      if (typeof body !== 'object' || body === null) {
+        return { ok: false, error: 'That address did not return a Vicoa auth config' };
+      }
+      const record = body as Record<string, unknown>;
+      if (!isAuthProviderName(record.provider)) {
+        return { ok: false, error: 'That address did not return a Vicoa auth config' };
+      }
+      return {
+        ok: true,
+        apiUrl,
+        wsUrl: wsPreview,
+        provider: record.provider,
+        allowSignup: record.allow_signup !== false,
+        requireEmailVerification: record.require_email_verification === true,
+      };
+    } catch {
+      return {
+        ok: false,
+        error: 'Could not reach that API address. Check the host, port, and certificate.',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  ipcMain.handle('vicoa:save-server-config', async (_event, raw: unknown) => {
+    if (typeof raw !== 'object' || raw === null) {
+      return { ok: false, error: 'Invalid server config' };
+    }
+    const record = raw as Record<string, unknown>;
+    const webUrl = typeof record.webUrl === 'string' ? normalizeHttpUrl(record.webUrl) : null;
+    const apiUrl = typeof record.apiUrl === 'string' ? normalizeHttpUrl(record.apiUrl) : null;
+    if (webUrl === null || apiUrl === null) {
+      return { ok: false, error: 'Enter a valid web address and API address' };
+    }
+    const wsUrl =
+      typeof record.wsUrl === 'string' && record.wsUrl.trim() !== ''
+        ? normalizeWsUrl(record.wsUrl)
+        : deriveWsUrl(apiUrl);
+    if (wsUrl === null) return { ok: false, error: 'Enter a valid WebSocket address' };
+    if (!isAuthProviderName(record.authProvider)) {
+      return { ok: false, error: 'Test the server before saving' };
+    }
+    const supabaseUrl =
+      typeof record.supabaseUrl === 'string' ? normalizeHttpUrl(record.supabaseUrl) : null;
+    const supabaseAnonKey =
+      typeof record.supabaseAnonKey === 'string' ? record.supabaseAnonKey.trim() : '';
+    if (record.authProvider === 'supabase' && (supabaseUrl === null || supabaseAnonKey === '')) {
+      return { ok: false, error: 'This server uses Supabase. Enter the project URL and anon key.' };
+    }
+    const saved: SavedServerConfig = {
+      apiUrl,
+      wsUrl,
+      authUrl: webUrl,
+      authProvider: record.authProvider,
+      ...(record.authProvider === 'supabase' && supabaseUrl !== null
+        ? { supabaseUrl, supabaseAnonKey }
+        : {}),
+    };
+    try {
+      saveSelfHostEndpoints(saved);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Could not save the server' };
+    }
+    // relaunch inherits this process's env, and that env would hide the file
+    // we just wrote. Drop the overrides so the new process reads desktop.json.
+    for (const name of [
+      'VICOA_API_URL',
+      'VICOA_WS_URL',
+      'VICOA_AUTH_URL',
+      'NEXT_PUBLIC_BACKEND_API_URL',
+      'NEXT_PUBLIC_VICOA_WS_URL',
+      'NEXT_PUBLIC_VICOA_WEB_URL',
+      'NEXT_PUBLIC_AUTH_PROVIDER',
+    ]) {
+      delete process.env[name];
+    }
+    isQuitting = true;
+    app.relaunch();
+    void runQuitCleanup().finally(() => app.exit(0));
+    return { ok: true };
+  });
+
   ipcMain.handle('vicoa:set-api-key', async (_event, key: unknown) => {
     if (typeof key !== 'string' || key.trim().length === 0) {
       return { ok: false, error: 'API key must be a non-empty string' };
@@ -891,6 +1065,7 @@ function registerIpcHandlers(): void {
     }
     try {
       saveWriteKey(daemonBaseUrl, key.trim());
+      markSelfHostSession();
     } catch (err) {
       logDeepLinkEvent(`setApiKey: failed to write credentials: ${String(err)}`);
       return { ok: false, error: `Failed to write credentials: ${String(err)}` };
@@ -927,6 +1102,7 @@ function registerIpcHandlers(): void {
     }
     try {
       removeWriteKey(daemonBaseUrl);
+      clearSelfHostSession();
     } catch (err) {
       return { ok: false, error: `Failed to update credentials: ${String(err)}` };
     }
@@ -995,9 +1171,11 @@ function buildAppMenu(): void {
     ...(isMac
       ? [
           {
-            label: 'Vicoa',
+            label: app.getName(),
             submenu: [
               { role: 'about' },
+              { type: 'separator' },
+              { label: 'Server…', click: () => openServerSettings() },
               { type: 'separator' },
               installCliMenuItem,
               { type: 'separator' },
@@ -1046,7 +1224,7 @@ function buildAppMenu(): void {
     // menu has it too; on Windows/Linux this is the only place it surfaces).
     {
       role: 'help',
-      submenu: [installCliMenuItem],
+      submenu: [{ label: 'Server…', click: () => openServerSettings() }, installCliMenuItem],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -1120,7 +1298,7 @@ async function bootstrap(): Promise<void> {
   // awaits this same in-flight download and shows a splash only for the remainder.
   // Logged-out users deliberately DON'T pre-fetch — they download at sign-in
   // (setApiKey), so a tire-kicker never pulls ~150 MB they may never use.
-  if (hasWriteKey(daemonBaseUrl)) {
+  if (hasAppSession()) {
     warmManagedDaemon();
   }
 
@@ -1190,7 +1368,7 @@ async function bootstrap(): Promise<void> {
   // ever created in the local store, and sign-in restarts the daemon in
   // cloud mode via the setApiKey handler.
   // (Previously: const localOnly = !hasWriteKey(); daemonManager.start(localOnly);)
-  if (!hasWriteKey(daemonBaseUrl)) {
+  if (!hasAppSession()) {
     ensureMainWindow();
     // No daemon is spawned while logged out; the managed daemon (de-bundled
     // builds) is fetched at sign-in — see the setApiKey handler.

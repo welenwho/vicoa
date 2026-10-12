@@ -215,6 +215,16 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
         // Landing, …) live in the closed overlay — empty in the open build.
         ...onboardingRoutes(),
         FFRoute(
+          name: ServerSettingsWidget.routeName,
+          path: ServerSettingsWidget.routePath,
+          builder: (context, params) => const ServerSettingsWidget(),
+        ),
+        FFRoute(
+          name: BuiltinSignInWidget.routeName,
+          path: BuiltinSignInWidget.routePath,
+          builder: (context, params) => const BuiltinSignInWidget(),
+        ),
+        FFRoute(
           name: AuthOptionsWidget.routeName,
           path: AuthOptionsWidget.routePath,
           builder: (context, params) => AuthOptionsWidget(),

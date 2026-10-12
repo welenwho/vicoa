@@ -51,6 +51,7 @@ const path = require('node:path');
 const targetsWin = process.argv.includes('--win');
 const targetsLinux = process.argv.includes('--linux');
 
+const isSelfHost = process.env.VICOA_SELFHOST === '1';
 const isMacRelease = process.env.VICOA_MAC_RELEASE === '1';
 // Local pre-flight (`pnpm package:release:local`): VICOA_SKIP_NOTARIZE=1 keeps
 // real Developer ID signing ON but skips the ~5-7 min Apple notarization AND the
@@ -76,8 +77,8 @@ const entitlements = path.join(__dirname, 'signing', 'entitlements.mac.plist');
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
-  appId: 'ai.vicoa.desktop',
-  productName: 'Vicoa',
+  appId: isSelfHost ? 'ai.vicoa.desktop.selfhost' : 'ai.vicoa.desktop',
+  productName: isSelfHost ? 'Vicoa Self-host' : 'Vicoa',
   // Ship English only, but list BOTH the macOS and the Windows/Linux locale
   // names — electron-builder's language pruner matches by the platform's own
   // file naming, which differs. macOS keeps `en.lproj` (id `en`); Windows/Linux
@@ -125,12 +126,18 @@ module.exports = {
   // (no token needed). releaseType 'draft' keeps a release invisible to the
   // updater until every asset has finished uploading — the CI workflow
   // un-drafts it as the last step.
-  publish: {
-    provider: 'github',
-    owner: 'vicoa-ai',
-    repo: 'vicoa',
-    releaseType: 'draft',
-  },
+  // The self-host package is distributed by hand. Pointing it at the official
+  // GitHub feed would offer to replace it with the hosted build.
+  ...(isSelfHost
+    ? {}
+    : {
+        publish: {
+          provider: 'github',
+          owner: 'vicoa-ai',
+          repo: 'vicoa',
+          releaseType: 'draft',
+        },
+      }),
   mac: {
     // macOS-ONLY. Declared here rather than at the top level so a --win build
     // never tries to copy this Mach-O (which build-notification-status.mjs only

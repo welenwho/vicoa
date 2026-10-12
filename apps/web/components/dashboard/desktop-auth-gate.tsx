@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { isBuiltinAuth } from '@/lib/auth/auth-provider';
+import { getBuiltinToken } from '@/lib/auth/builtin-client';
 import { createClient } from '@/lib/auth/supabase-client';
 import { getDesktopConfig } from '@/lib/runtime-config';
 import { getDesktopAuthBridge } from '@/lib/desktop-auth';
@@ -45,6 +47,18 @@ const IS_DESKTOP = process.env.NEXT_PUBLIC_VICOA_DESKTOP === '1';
 // is deliberately absent: it runs after sign-in and needs cloud mode + a
 // session, which is exactly how a non-auth route is already treated below.
 // Listing it here would splash it forever for the signed-in shell it targets.
+const REQUIRE_SERVER = process.env.NEXT_PUBLIC_VICOA_REQUIRE_SERVER === '1';
+
+function serverConfigReady(config: ReturnType<typeof getDesktopConfig>): boolean {
+  if (!REQUIRE_SERVER) return true;
+  if (!config?.cloudApiBase || !config.cloudWebUrl) return false;
+  if (config.authProvider !== 'builtin' && config.authProvider !== 'supabase') return false;
+  if (config.authProvider === 'supabase' && (!config.supabaseUrl || !config.supabaseAnonKey)) {
+    return false;
+  }
+  return true;
+}
+
 const AUTH_ROUTES = [
   '/desktop-intro',
   '/desktop-welcome',
@@ -62,6 +76,17 @@ function isAuthRoute(pathname: string | null): boolean {
 }
 
 async function readSession() {
+  // A self-hosted desktop renderer stores the built-in session token in a
+  // cookie on its own loopback origin. That token is the session. Falling
+  // through to Supabase here reported "signed out" and the gate deleted the
+  // daemon key that the browser handoff had just saved.
+  if (isBuiltinAuth()) {
+    const token = getBuiltinToken();
+    return {
+      session: token ? ({ access_token: token } as { access_token: string }) : null,
+      ok: true as const,
+    };
+  }
   try {
     const {
       data: { session },
@@ -91,6 +116,11 @@ export function DesktopAuthGate({ children }: { children: React.ReactNode }) {
 
   const decide = useCallback(async () => {
     const config = getDesktopConfig();
+    if (pathname === '/desktop-server') return;
+    if (!serverConfigReady(config)) {
+      router.replace('/desktop-server');
+      return;
+    }
     const onAuthRoute = isAuthRoute(pathname);
     const isCloud = !!config && config.mode === 'cloud';
 
@@ -173,12 +203,17 @@ export function DesktopAuthGate({ children }: { children: React.ReactNode }) {
     void decide();
 
     // React to a sign-out while the window is open, and re-validate on focus.
+    // A built-in deployment has no Supabase client to subscribe to; creating
+    // one would throw or report a hosted sign-out and delete the daemon key.
+    const onFocus = () => void decide();
+    window.addEventListener('focus', onFocus);
+    if (isBuiltinAuth()) {
+      return () => window.removeEventListener('focus', onFocus);
+    }
     const supabase = createClient();
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') void decide();
     });
-    const onFocus = () => void decide();
-    window.addEventListener('focus', onFocus);
     return () => {
       data.subscription.unsubscribe();
       window.removeEventListener('focus', onFocus);
@@ -191,6 +226,8 @@ export function DesktopAuthGate({ children }: { children: React.ReactNode }) {
   if (!mounted) return <DesktopSplash />;
 
   const config = getDesktopConfig();
+  if (pathname === '/desktop-server') return <>{children}</>;
+  if (!serverConfigReady(config)) return <DesktopSplash />;
   const onAuthRoute = isAuthRoute(pathname);
   const isCloud = !!config && config.mode === 'cloud';
 

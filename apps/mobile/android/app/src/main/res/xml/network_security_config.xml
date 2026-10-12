@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Self-hosted servers are often plain HTTP on a LAN, or HTTPS signed by a
+     CA the user installed on the device. Cleartext and user CAs stay allowed
+     so that address can be reached. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

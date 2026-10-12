@@ -57,7 +57,9 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "app.vicoa"
+        // Distinct from the Play Store app so this self-host build can be
+        // installed beside it. The store build is signed with a different key.
+        applicationId "app.vicoa.selfhost"
         minSdkVersion 26
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
@@ -75,9 +77,12 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.release
+            // A local self-host build has no upload keystore. Fall back to the
+            // debug key so the APK can be installed; drop in key.properties to
+            // sign with your own key.
+            signingConfig keystorePropertiesFile.exists()
+                ? signingConfigs.release
+                : signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '/auth/builtin_auth/builtin_session.dart';
 import '/backend/supabase/supabase.dart';
 import 'user_agents_cache.dart';
 import 'vicoa_api_config.dart';
@@ -83,7 +84,11 @@ class VicoaWsClient with WidgetsBindingObserver {
     //   next signedIn. SupaFlow is initialized in main() before any screen
     //   touches `VicoaWsClient.instance`, so this listen is safe at field
     //   init time.
-    _authSub = SupaFlow.client.auth.onAuthStateChange.listen(_handleAuthChange);
+    if (SupaFlow.isInitialized) {
+      _authSub = SupaFlow.client.auth.onAuthStateChange.listen(_handleAuthChange);
+    }
+    _builtinAuthSub =
+        BuiltinSession.instance.authEvents.listen(_handleBuiltinAuth);
   }
 
   static final VicoaWsClient instance = VicoaWsClient._();
@@ -103,6 +108,7 @@ class VicoaWsClient with WidgetsBindingObserver {
   Timer? _livenessTimer;
   Timer? _idleCloseTimer;
   StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<BuiltinAuthEvent>? _builtinAuthSub;
 
   final Map<String, _WatchedInstance> _watched = {};
   // request_id → the catch-up job awaiting that fetch_messages_response.
@@ -429,8 +435,36 @@ class VicoaWsClient with WidgetsBindingObserver {
   }
 
   void _ensureAuthListener() {
+    if (!SupaFlow.isInitialized) return;
     _authSub ??=
         SupaFlow.client.auth.onAuthStateChange.listen(_handleAuthChange);
+  }
+
+  void _handleBuiltinAuth(BuiltinAuthEvent event) {
+    if (event == BuiltinAuthEvent.signedOut) {
+      _closeForSignOut();
+      return;
+    }
+    if (_retainCount > 0 && !_destroyed && _connected) {
+      debugPrint('[ws] builtin auth signedIn → reconnecting');
+      _forceReconnect();
+    }
+  }
+
+  void _closeForSignOut() {
+    debugPrint('[ws] auth signedOut → closing socket');
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final channel = _channel;
+    _channel = null;
+    _connected = false;
+    _channelSub?.cancel();
+    _channelSub = null;
+    _clearLiveness();
+    _failPendingRpc('signed_out');
+    _failConnectedWaiters();
+    _watched.clear();
+    channel?.sink.close();
   }
 
   Future<void> _waitUntilConnected({
@@ -525,19 +559,7 @@ class VicoaWsClient with WidgetsBindingObserver {
         // subscriptions (e.g. token-expiry-driven signedOut beats screen
         // teardown), the next signedIn must not re-watch the previous
         // user's instances under the new user's connection.
-        debugPrint('[ws] auth signedOut → closing socket');
-        _reconnectTimer?.cancel();
-        _reconnectTimer = null;
-        final channel = _channel;
-        _channel = null;
-        _connected = false;
-        _channelSub?.cancel();
-        _channelSub = null;
-        _clearLiveness();
-        _failPendingRpc('signed_out');
-        _failConnectedWaiters();
-        _watched.clear();
-        channel?.sink.close();
+        _closeForSignOut();
         break;
       default:
         break;
