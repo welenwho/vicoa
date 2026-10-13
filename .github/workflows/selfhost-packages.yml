@@ -1,0 +1,318 @@
+name: Self-host packages
+
+# Builds installable self-host clients from this fork and publishes them as a
+# prerelease. The official Desktop release workflow stays on vicoa-ai/vicoa and
+# is not used here: it requires Apple signing secrets and ships the hosted app.
+#
+# Platforms:
+#   macOS arm64   unsigned .dmg / .zip  (right-click Open on first launch)
+#   Windows x64   unsigned NSIS installer
+#   Linux x64     unsigned AppImage
+#   Android       release APK (app.vicoa.selfhost)
+#
+# Each desktop package bundles a daemon built from this commit, so agent
+# changes such as Grok are in the binary. The pinned @vicoa/cli npm daemon is
+# not used.
+#
+# Android is signed with the repo secrets when they are set:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Without those secrets the APK is debug-signed so the workflow still produces
+# a file. A debug-signed APK cannot update a release-signed install.
+#
+# Trigger: push to main that touches the clients, the web renderer, or the
+# daemon, or Actions -> Run workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'apps/mobile/**'
+      - 'backend/**'
+      - '.github/workflows/selfhost-packages.yml'
+
+concurrency:
+  group: selfhost-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  desktop-macos:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build daemon from this commit
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+          python -m PyInstaller --clean --noconfirm pyinstaller/vicoa.spec
+          ./pyinstaller/dist/vicoa/vicoa headless --help | grep -q grok
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop deps
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Package self-host macOS app
+        working-directory: apps/desktop
+        env:
+          VICOA_SELFHOST: '1'
+          VICOA_DAEMON_VERSION: local
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          POSTGRES_URL: postgres://127.0.0.1:1/desktop-ci-unused
+          STRIPE_SECRET_KEY: sk_test_desktop_ci_unused
+          STRIPE_WEBHOOK_SECRET: whsec_desktop_ci_unused
+        run: pnpm run package:selfhost:mac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-arm64
+          path: |
+            apps/desktop/dist-app/*.dmg
+            apps/desktop/dist-app/*.zip
+          if-no-files-found: error
+
+  desktop-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build daemon from this commit
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+          python -m PyInstaller --clean --noconfirm pyinstaller/vicoa.spec
+          $help = .\pyinstaller\dist\vicoa\vicoa.exe headless --help | Out-String
+          if ($help -notmatch 'grok') { throw 'built daemon does not accept --agent grok' }
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop deps
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Package self-host Windows app
+        working-directory: apps/desktop
+        env:
+          VICOA_SELFHOST: '1'
+          VICOA_DAEMON_VERSION: local
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          POSTGRES_URL: postgres://127.0.0.1:1/desktop-ci-unused
+          STRIPE_SECRET_KEY: sk_test_desktop_ci_unused
+          STRIPE_WEBHOOK_SECRET: whsec_desktop_ci_unused
+        run: pnpm run package:selfhost:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-x64
+          path: apps/desktop/dist-app/*.exe
+          if-no-files-found: error
+
+  desktop-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build daemon from this commit
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+          python -m PyInstaller --clean --noconfirm pyinstaller/vicoa.spec
+          ./pyinstaller/dist/vicoa/vicoa headless --help | grep -q grok
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop deps
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          node node_modules/electron/install.js
+
+      - name: Package self-host Linux app
+        working-directory: apps/desktop
+        env:
+          VICOA_SELFHOST: '1'
+          VICOA_DAEMON_VERSION: local
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          POSTGRES_URL: postgres://127.0.0.1:1/desktop-ci-unused
+          STRIPE_SECRET_KEY: sk_test_desktop_ci_unused
+          STRIPE_WEBHOOK_SECRET: whsec_desktop_ci_unused
+        run: pnpm run package:selfhost:linux
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-x64
+          path: apps/desktop/dist-app/*.AppImage
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          cache: true
+
+      - name: Write release keystore when secrets are present
+        id: sign
+        working-directory: apps/mobile/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            KEYSTORE="$RUNNER_TEMP/vicoa-selfhost.jks"
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$KEYSTORE"
+            {
+              printf 'storePassword=%s\n' "$STORE_PASSWORD"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+              printf 'keyAlias=%s\n' "$KEY_ALIAS"
+              printf 'storeFile=%s\n' "$KEYSTORE"
+            } > key.properties
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=debug" >> "$GITHUB_OUTPUT"
+            echo "Android signing secrets are unset; the APK will use the debug key."
+          fi
+
+      - name: Build release APK
+        working-directory: apps/mobile
+        run: flutter build apk --release
+
+      - name: Name the APK
+        run: |
+          src=apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          dest="Vicoa-Self-host-${{ steps.sign.outputs.mode }}.apk"
+          cp "$src" "$dest"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: Vicoa-Self-host-*.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [desktop-macos, desktop-windows, desktop-linux, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          TAG="selfhost-v${VERSION}-r${GITHUB_RUN_NUMBER}"
+          mkdir -p release-assets
+          find artifacts -type f \
+            \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.apk' \) \
+            -exec cp {} release-assets/ \;
+          ls -lh release-assets
+          NOTES="Self-host packages from ${GITHUB_SHA}.
+
+- macOS: unsigned. On first launch, right-click the app and choose Open.
+- Windows: unsigned. SmartScreen asks for confirmation on first launch.
+- Linux: unsigned AppImage.
+- Android: app.vicoa.selfhost. A debug filename means ANDROID_KEYSTORE_* secrets are unset, so this APK cannot update a release-signed install.
+
+The desktop apps bundle the daemon built from this commit."
+          gh release create "$TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Self-host packages v${VERSION} (run ${GITHUB_RUN_NUMBER})" \
+            --prerelease \
+            --notes "$NOTES"
