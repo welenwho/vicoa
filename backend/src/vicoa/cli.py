@@ -51,7 +51,7 @@ AGENT_CHOICES = ["claude", "amp", "codex", "opencode"]
 
 # Agents served by the generic ACP module (integrations/headless/generic_acp).
 # Headless/daemon mode only — there is no TUI wrapper for these.
-GENERIC_ACP_AGENT_CHOICES = ["cursor", "gemini", "copilot", "kimi", "hermes"]
+GENERIC_ACP_AGENT_CHOICES = ["cursor", "gemini", "copilot", "kimi", "hermes", "grok"]
 # Native-RPC Pi family (integrations/headless/pi_family/). Not ACP — one
 # wrapper, two agents, selected with `--agent`.
 PI_FAMILY_AGENT_CHOICES = ["omp", "pi"]

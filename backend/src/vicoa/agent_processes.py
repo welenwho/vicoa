@@ -146,6 +146,7 @@ _AGENT_NAMES = frozenset(
         "copilot",
         "kimi",
         "hermes",
+        "grok",
         "antigravity",
     }
 )
